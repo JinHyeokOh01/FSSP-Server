@@ -2,7 +2,7 @@ package main
 
 import(
 	"github.com/gin-gonic/gin"
-	"github.com/JinHyeokOh01/FSSP-Server/login"
+	"github.com/JinHyeokOh01/FSSP-Server/lgn"
 )
 
 func main() {
