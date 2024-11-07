@@ -1,4 +1,4 @@
-package login
+package lgn
 
 import(
 	"net/http"

@@ -2,16 +2,16 @@ package main
 
 import(
 	"github.com/gin-gonic/gin"
-	"github.com/JinHyeokOh01/FSSP-Server"
+	"github.com/JinHyeokOh01/FSSP-Server/login"
 )
 
 func main() {
 
 	r := gin.Default()
  
-	r.GET("/", login.googleForm)
-	r.GET("/auth/google/login", login.googleLoginHandler)
-	r.GET("/auth/google/callback", login.googleAuthCallback)
+	r.GET("/", lgn.googleForm)
+	r.GET("/auth/google/login", lgn.googleLoginHandler)
+	r.GET("/auth/google/callback", lgn.googleAuthCallback)
  
 	r.Run(":5000")
  }
