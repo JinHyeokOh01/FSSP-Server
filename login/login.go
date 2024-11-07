@@ -36,7 +36,7 @@ func init() {
 	}
 }
 
-func googleForm(c *gin.Context) {
+func GoogleForm(c *gin.Context) {
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(
 	   "<html>" +
 		  "\n<head>\n    " +
@@ -49,7 +49,7 @@ func googleForm(c *gin.Context) {
 	   "</html>"))
  }
  
- func generateStateOauthCookie(w http.ResponseWriter) string {
+ func GenerateStateOauthCookie(w http.ResponseWriter) string {
 	expiration := time.Now().Add(1 * 24 * time.Hour)
  
 	b := make([]byte, 16)
@@ -60,14 +60,14 @@ func googleForm(c *gin.Context) {
 	return state
  }
  
- func googleLoginHandler(c *gin.Context) {
+ func GoogleLoginHandler(c *gin.Context) {
  
-	state := generateStateOauthCookie(c.Writer)
+	state := GenerateStateOauthCookie(c.Writer)
 	url := googleOauthConfig.AuthCodeURL(state)
 	c.Redirect(http.StatusTemporaryRedirect,url)
  }
 
- func googleAuthCallback(c *gin.Context) {
+ func GoogleAuthCallback(c *gin.Context) {
 	oauthstate, _ := c.Request.Cookie("oauthstate") // 12
  
 	if c.Request.FormValue("state") != oauthstate.Value { // 13
@@ -76,7 +76,7 @@ func googleForm(c *gin.Context) {
 	   return
 	}
  
-	data, err := getGoogleUserInfo(c.Request.FormValue("code")) // 14
+	data, err := GetGoogleUserInfo(c.Request.FormValue("code")) // 14
 	if err != nil {                                     // 15
 	   log.Println(err.Error())
 	   c.Redirect( http.StatusTemporaryRedirect,"/")
@@ -86,7 +86,7 @@ func googleForm(c *gin.Context) {
 	fmt.Fprint(c.Writer, string(data)) // 16
  }
  
- func getGoogleUserInfo(code string) ([]byte, error) { // 17
+ func GetGoogleUserInfo(code string) ([]byte, error) { // 17
 	const oauthGoogleUrlAPI = "https://www.googleapis.com/oauth2/v2/userinfo?access_token=" 
 	token, err := googleOauthConfig.Exchange(context.Background(), code) // 18
 	if err != nil {                                                      // 19
@@ -100,3 +100,15 @@ func googleForm(c *gin.Context) {
  
 	return ioutil.ReadAll(resp.Body) // 23
  }
+/*
+ func main() {
+
+	r := gin.Default()
+ 
+	r.GET("/", GoogleForm)
+	r.GET("/auth/google/login", GoogleLoginHandler)
+	r.GET("/auth/google/callback", GoogleAuthCallback)
+ 
+	r.Run(":5000")
+ }
+*/

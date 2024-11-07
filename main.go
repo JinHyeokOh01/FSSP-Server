@@ -9,9 +9,9 @@ func main() {
 
 	r := gin.Default()
  
-	r.GET("/", login.googleForm)
-	r.GET("/auth/google/login", login.googleLoginHandler)
-	r.GET("/auth/google/callback", login.googleAuthCallback)
+	r.GET("/", login.GoogleForm)
+	r.GET("/auth/google/login", login.GoogleLoginHandler)
+	r.GET("/auth/google/callback", login.GoogleAuthCallback)
  
 	r.Run(":5000")
  }
