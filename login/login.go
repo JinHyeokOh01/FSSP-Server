@@ -5,6 +5,7 @@ import(
     "time"
     "math/rand"
     "encoding/base64"
+	"encoding/json"
     "log"
 	"fmt"
     "context"
@@ -31,7 +32,7 @@ func init() {
 	RedirectURL:  "http://localhost:5000/auth/google/callback",
 	ClientID:     os.Getenv("Client_ID"),
 	ClientSecret: os.Getenv("Client_Secret"),
-	Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email"},
+	Scopes:       []string{"https://www.googleapis.com/auth/userinfo.profile", "https://www.googleapis.com/auth/userinfo.email"},
 	Endpoint:     google.Endpoint,
 	}
 }
@@ -68,37 +69,50 @@ func GoogleForm(c *gin.Context) {
  }
 
  func GoogleAuthCallback(c *gin.Context) {
-	oauthstate, _ := c.Request.Cookie("oauthstate") // 12
+	oauthstate, _ := c.Request.Cookie("oauthstate")
  
-	if c.Request.FormValue("state") != oauthstate.Value { // 13
+	if c.Request.FormValue("state") != oauthstate.Value {
 	   log.Printf("invalid google oauth state cookie:%s state:%s\n", oauthstate.Value, c.Request.FormValue("state"))
 	   c.Redirect(http.StatusTemporaryRedirect,"/")
 	   return
 	}
  
-	data, err := GetGoogleUserInfo(c.Request.FormValue("code")) // 14
-	if err != nil {                                     // 15
+	data, err := GetGoogleUserInfo(c.Request.FormValue("code"))
+	if err != nil {
 	   log.Println(err.Error())
 	   c.Redirect( http.StatusTemporaryRedirect,"/")
 	   return
 	}
  
-	fmt.Fprint(c.Writer, string(data)) // 16
+	fmt.Fprint(c.Writer, string(data))
  }
  
- func GetGoogleUserInfo(code string) ([]byte, error) { // 17
+ func GetGoogleUserInfo(code string) ([]byte, error) {
 	const oauthGoogleUrlAPI = "https://www.googleapis.com/oauth2/v2/userinfo?access_token=" 
-	token, err := googleOauthConfig.Exchange(context.Background(), code) // 18
-	if err != nil {                                                      // 19
+	token, err := googleOauthConfig.Exchange(context.Background(), code)
+	if err != nil {
 	   return nil, fmt.Errorf("Failed to Exchange %s\n", err.Error())
 	}
  
-	resp, err := http.Get(oauthGoogleUrlAPI + token.AccessToken) // 20
-	if err != nil {                                              // 21
+	resp, err := http.Get(oauthGoogleUrlAPI + token.AccessToken)
+	if err != nil {                                             
 	   return nil, fmt.Errorf("Failed to Get UserInfo %s\n", err.Error())
 	}
- 
-	return ioutil.ReadAll(resp.Body) // 23
+
+	src_json, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+        return nil, fmt.Errorf("Failed to unmarshal JSON:", err.Error())
+    }
+	defer resp.Body.Close()
+
+	var n map[string]interface{}
+	err = json.Unmarshal(src_json, &n)
+	if err != nil {
+		log.Println(err.Error())
+	}
+	fmt.Println(n["given_name"])
+
+	return src_json, err
  }
 /*
  func main() {
