@@ -1,4 +1,4 @@
-module github.com/JinHyeokOh01/FSSP-Server/login/lgn
+module server
 
 go 1.23.1
 
