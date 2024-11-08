@@ -4,6 +4,7 @@ import(
 	"github.com/gin-gonic/gin"
 	"server/login"
 	"server/db"
+	"server/naver"
 )
 
 func main() {
@@ -12,7 +13,7 @@ func main() {
 		panic(err)
 	}
 	defer db.DisconnectDB(client)
-	
+
 	r := gin.Default()
  
 	r.GET("/", login.GoogleForm)
@@ -20,7 +21,7 @@ func main() {
 	r.GET("/auth/google/callback", func(c *gin.Context) {
         login.GoogleAuthCallback(c, client)
     })
+	r.GET("/search", naver.QuerySearch)
  
-	r.Run(":5000")
-	
+	r.Run(":8080")
  }
