@@ -15,7 +15,10 @@ import(
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"github.com/joho/godotenv"
+	"go.mongodb.org/mongo-driver/mongo"
 	"os"
+
+	"server/db"
 )
 
 var (
@@ -62,13 +65,12 @@ func GoogleForm(c *gin.Context) {
  }
  
  func GoogleLoginHandler(c *gin.Context) {
- 
 	state := GenerateStateOauthCookie(c.Writer)
 	url := googleOauthConfig.AuthCodeURL(state)
 	c.Redirect(http.StatusTemporaryRedirect,url)
  }
 
- func GoogleAuthCallback(c *gin.Context) {
+ func GoogleAuthCallback(c *gin.Context, client *mongo.Client) {
 	oauthstate, _ := c.Request.Cookie("oauthstate")
  
 	if c.Request.FormValue("state") != oauthstate.Value {
@@ -83,6 +85,15 @@ func GoogleForm(c *gin.Context) {
 	   c.Redirect( http.StatusTemporaryRedirect,"/")
 	   return
 	}
+
+	var n map[string]interface{}
+	err = json.Unmarshal(data, &n)
+	if err != nil {
+		log.Println(err.Error())
+	}
+	fmt.Println(n["given_name"])
+
+	db.UploadDB(client, n["given_name"].(string))
  
 	fmt.Fprint(c.Writer, string(data))
  }
@@ -104,13 +115,6 @@ func GoogleForm(c *gin.Context) {
         return nil, fmt.Errorf("Failed to unmarshal JSON:", err.Error())
     }
 	defer resp.Body.Close()
-
-	var n map[string]interface{}
-	err = json.Unmarshal(src_json, &n)
-	if err != nil {
-		log.Println(err.Error())
-	}
-	fmt.Println(n["given_name"])
 
 	return src_json, err
  }
