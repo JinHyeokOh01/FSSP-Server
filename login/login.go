@@ -16,6 +16,7 @@ import(
 	"golang.org/x/oauth2/google"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/bson"
 	"os"
 
 	"server/db"
@@ -92,10 +93,21 @@ func GoogleForm(c *gin.Context) {
 		log.Println(err.Error())
 	}
 	fmt.Println(n["given_name"])
-
-	db.UploadDB(client, n["given_name"].(string))
- 
 	fmt.Fprint(c.Writer, string(data))
+
+	var result bson.M
+	coll := client.Database("FSSP_DB").Collection("users")
+	filter := bson.M{"email": n["email"].(string)}
+    err = coll.FindOne(context.TODO(), filter).Decode(&result)
+
+    if err == mongo.ErrNoDocuments {
+		db.UserAddDB(client, n["email"].(string), n["given_name"].(string))
+        return
+    } else if err != nil {
+        return
+    } else{
+		fmt.Println("Email Already existed")
+	}
  }
  
  func GetGoogleUserInfo(code string) ([]byte, error) {
@@ -118,15 +130,3 @@ func GoogleForm(c *gin.Context) {
 
 	return src_json, err
  }
-/*
- func main() {
-
-	r := gin.Default()
- 
-	r.GET("/", GoogleForm)
-	r.GET("/auth/google/login", GoogleLoginHandler)
-	r.GET("/auth/google/callback", GoogleAuthCallback)
- 
-	r.Run(":5000")
- }
-*/

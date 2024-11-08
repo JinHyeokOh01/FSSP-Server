@@ -45,20 +45,37 @@ func DisconnectDB(client *mongo.Client){
     fmt.Println("Successfully disconnected from MongoDB!")
 }
 
-
-type Book struct {
-	Title  string
-	Author string
+type UserInfo struct {
+	Email string
+	Name  string
+	List []string
 }
 
-
-func UploadDB(client *mongo.Client, a string){
+func UserAddDB(client *mongo.Client, email string, name string){
 	coll := client.Database("FSSP_DB").Collection("users")
-	doc := Book{Title: "Atonement", Author: a}
+	doc := UserInfo{Email: email, Name: name, List: []string{}}
 	result, err := coll.InsertOne(context.TODO(), doc)
 	if err != nil{
 		panic(err)
 	}
 	fmt.Printf("Inserted document with _id: %v\n", result.InsertedID)
+}
 
+//식당 저장할 때 추가하는 함수
+func UpdateListDB(client *mongo.Client, email string, newItem string){
+	coll := client.Database("FSSP_DB").Collection("users")
+
+	// 새로운 아이템을 추가할 문서 찾기
+    filter := bson.M{"Email": email}
+
+    // 업데이트할 내용 정의
+    update := bson.M{
+        "$push": bson.M{"List": newItem}, // List에 newItem 추가
+    }
+
+    // 문서 업데이트
+    _, err := coll.UpdateOne(context.TODO(), filter, update)
+    if err != nil {
+        panic(err)
+    }
 }
