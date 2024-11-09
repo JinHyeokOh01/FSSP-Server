@@ -22,7 +22,7 @@ type NaverSearchResponse struct {
     } `json:"items"`
 }
 
-func NaverSearch(query string) (*NaverSearchResponse, error) {
+func NaverSearch(query string, display int) (*NaverSearchResponse, error) {
     err := godotenv.Load()
     if err != nil {
         log.Fatal("Error loading .env file")
@@ -32,7 +32,7 @@ func NaverSearch(query string) (*NaverSearchResponse, error) {
 
     // URL 인코딩
     encodedQuery := url.QueryEscape(query)
-    url := fmt.Sprintf("https://openapi.naver.com/v1/search/local.json?query=%s", encodedQuery)
+    url := fmt.Sprintf("https://openapi.naver.com/v1/search/local.json?query=%s&display=%d", encodedQuery, display)
 
     req, err := http.NewRequest("GET", url, nil)
     if err != nil {
@@ -72,7 +72,8 @@ func NaverSearch(query string) (*NaverSearchResponse, error) {
 
 func QuerySearch(c *gin.Context) {
     query := c.Query("query") // URL 파라미터에서 쿼리 가져오기
-    result, err := NaverSearch(query)
+    display := 5
+    result, err := NaverSearch(query, display)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
