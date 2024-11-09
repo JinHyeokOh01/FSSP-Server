@@ -3,8 +3,11 @@ package db
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/joho/godotenv"
+	"github.com/gin-gonic/gin"
+
 	"os"
 	"log"
   
@@ -61,16 +64,71 @@ func UserAddDB(client *mongo.Client, email string, name string){
 	fmt.Printf("Inserted document with _id: %v\n", result.InsertedID)
 }
 
+type ListRequest struct {
+    NewItem string `json:"new_item" binding:"required"`
+}
+
+func UpdateListHandler(c *gin.Context, client *mongo.Client, email string) {
+    /*var request UpdateListRequest
+
+    // 요청 바디에서 데이터 바인딩
+    if err := c.ShouldBindJSON(&request); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+		*/
+
+    // 데이터베이스 업데이트
+    UpdateListDB(client, email, "그로또")
+
+    c.JSON(http.StatusOK, gin.H{"status": "success"})
+}
+
 //식당 저장할 때 추가하는 함수
 func UpdateListDB(client *mongo.Client, email string, newItem string){
 	coll := client.Database("FSSP_DB").Collection("users")
 
 	// 새로운 아이템을 추가할 문서 찾기
-    filter := bson.M{"Email": email}
+    filter := bson.M{"email": email}
 
     // 업데이트할 내용 정의
     update := bson.M{
-        "$push": bson.M{"List": newItem}, // List에 newItem 추가
+        "$push": bson.M{"list": newItem}, // List에 newItem 추가
+    }
+
+    // 문서 업데이트
+    _, err := coll.UpdateOne(context.TODO(), filter, update)
+    if err != nil {
+        panic(err)
+    }
+}
+
+func DeleteListHandler(c *gin.Context, client *mongo.Client, email string) {
+    /*var request UpdateListRequest
+
+    // 요청 바디에서 데이터 바인딩
+    if err := c.ShouldBindJSON(&request); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+		*/
+
+    // 데이터베이스 업데이트
+    DeleteListDB(client, email, "그로또")
+
+    c.JSON(http.StatusOK, gin.H{"status": "success"})
+}
+
+//식당 삭제하는 함수
+func DeleteListDB(client *mongo.Client, email string, newItem string){
+	coll := client.Database("FSSP_DB").Collection("users")
+
+	// 아이템을 삭제할 문서 찾기
+    filter := bson.M{"email": email}
+
+    // 업데이트할 내용 정의
+    update := bson.M{
+        "$pull": bson.M{"list": newItem}, // List에서 newItem 삭제
     }
 
     // 문서 업데이트

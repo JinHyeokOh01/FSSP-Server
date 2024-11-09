@@ -19,6 +19,8 @@ type NaverSearchResponse struct {
         Description string `json:"description"`
         Telephone     string `json:"telephone"`
         RoadAddress string `json:"roadAddress"`
+        Mapx        string `json:"mapx"`
+        Mapy        string `json:"mapy"`
     } `json:"items"`
 }
 
@@ -66,7 +68,7 @@ func NaverSearch(query string, display int) (*NaverSearchResponse, error) {
     if err != nil {
         return nil, err
     }
-
+    
     return &searchResponse, nil
 }
 

@@ -108,6 +108,9 @@ func GoogleForm(c *gin.Context) {
     } else{
 		fmt.Println("Email Already existed")
 	}
+	db.Mu.Lock() // 뮤텍스 잠금
+    db.CurrentUser = n // 전역 변수에 사용자 정보 저장
+    db.Mu.Unlock()
  }
  
  func GetGoogleUserInfo(code string) ([]byte, error) {
