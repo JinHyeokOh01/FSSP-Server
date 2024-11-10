@@ -6,6 +6,7 @@ import(
 	"server/db"
 	"server/naver"
 	"server/geolocation"
+	"server/crwl"
 	"fmt"
 )
 
@@ -37,6 +38,7 @@ func main() {
 		db.DeleteListHandler(c, client, db.CurrentUser["email"].(string))
 	})
 	r.GET("/getLocation", geolocation.GeoLocationHandler)
+	r.GET("/getInformation", crwl.CrawlingHandler)
 
 	r.Run(":5000")
  }

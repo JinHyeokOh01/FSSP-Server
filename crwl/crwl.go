@@ -1,83 +1,25 @@
 //Claude
-package main
+package crwl
 
 import (
     "fmt"
     "log"
     "github.com/chromedp/chromedp"
+    "github.com/gin-gonic/gin"
+
     "context"
     "time"
+    "net/http"
 )
 
-func main() {
-    // 크롬 옵션 설정
-    opts := append(chromedp.DefaultExecAllocatorOptions[:],
-        chromedp.Flag("headless", true),
-    )
-    
-    // 컨텍스트 생성
-    allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-    defer cancel()
-    
-    ctx, cancel := chromedp.NewContext(allocCtx)
-    defer cancel()
-    
-    // 타임아웃 설정
-    ctx, cancel = context.WithTimeout(ctx, 15*time.Second)
-    defer cancel()
-
-    // URL을 저장할 변수
-    var href string
-    
-    // 웹페이지 방문 및 URL 추출
-    err := chromedp.Run(ctx,
-        // 웹페이지 방문 (실제 웹사이트 URL로 변경 필요)
-        chromedp.Navigate("https://map.naver.com/p/search/%EA%B7%B8%EB%A1%9C%EB%98%90"),
-        
-        // CSS 선택자로 요소 찾기 및 href 속성 가져오기
-        chromedp.AttributeValue("#_pcmap_list_scroll_container > ul > li:nth-child(1) > div.qbGlu > div.ouxiq > a:nth-child(2)", "href", &href, nil),
-    )
-    
-    if err != nil {
-        log.Fatal(err)
-    }
-    
-    // 결과 출력
-    fmt.Printf("찾은 URL: %s\n", href)
-}
 /*
-func main() {
-    // Chrome 실행을 위한 컨텍스트 생성
-    ctx, cancel := chromedp.NewContext(context.Background())
-    defer cancel()
-
-    // 타임아웃 설정
-    ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
-    defer cancel()
-
-    // 크롤링할 URL
-    url := "https://map.naver.com/p/search/%EA%B7%B8%EB%A1%9C%EB%98%90"
-    var newURL string
-    clickXPath := "//*[@id=\"_pcmap_list_scroll_container\"]/ul/li[1]"
-
-    // 작업 실행
-    err := chromedp.Run(ctx,
-        chromedp.Navigate(url),
-        chromedp.WaitVisible(clickXPath, chromedp.ByQuery),
-        chromedp.Click(clickXPath, chromedp.NodeVisible),
-        chromedp.Sleep(3*time.Second), // 클릭 후 로드 대기
-        chromedp.Location(&newURL),     // 현재 URL 가져오기
-    )
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // 결과 출력
-    fmt.Println("이동한 URL:", newURL)
+type TextElement struct {
+    Index int    `json:"index"`
+    Text  string `json:"text"`
 }
-	*/
-/*
-func main() {
+    */
+
+func crawling() ([]string, error) {
     // Chrome 옵션 설정 - User-Agent 추가 및 기타 설정
     opts := append(chromedp.DefaultExecAllocatorOptions[:],
         chromedp.Flag("headless", true),
@@ -131,7 +73,7 @@ func main() {
         chromedp.Navigate(url),
         
         // 로딩 대기 시간 증가
-        chromedp.Sleep(5*time.Second),
+        //chromedp.Sleep(1*time.Second),
         
         // DOM이 완전히 로드될 때까지 대기
         chromedp.WaitReady("body", chromedp.ByQuery),
@@ -143,22 +85,50 @@ func main() {
         chromedp.Click(".O8qbU.pSavy div a", chromedp.ByQuery),
         
         // 클릭 후 대기 시간 증가
-        chromedp.Sleep(5*time.Second),
+        chromedp.Sleep(1*time.Second),
+
+        chromedp.WaitVisible(".ipNNM .ZHqBk img.K0PDV"),
         
         // JavaScript로 텍스트 추출
         chromedp.Evaluate(`
-            Array.from(document.querySelectorAll('.A_cdD')).map(el => el.textContent)
-        `, &texts),
+                (() => {
+            const texts = Array.from(document.querySelectorAll('.A_cdD'))
+                .map(el => el.textContent.trim());
+                
+            const numbers = Array.from(document.querySelectorAll('.xlx7Q'))
+                .map(el => el.textContent.trim());
+
+            const menu = Array.from(document.querySelectorAll('.MN48z'))
+                .map(el => el.textContent.trim());
+
+            const imgSrc = Array.from(document.querySelectorAll('.place_section_content img'))
+                .map(el => el.getAttribute('src'))
+            return [...texts, ...numbers, ...menu, ...imgSrc];  // spread 연산자를 사용하여 두 배열을 올바르게 합침
+        })()
+    `, &texts),
     )
 
     if err != nil {
         log.Printf("크롤링 중 에러 발생: %v\n", err)
+        return []string{}, err
+    }
+
+    return texts, nil
+}
+
+func CrawlingHandler(c *gin.Context) {
+    // 크롤링 조회
+    result, err := crawling()
+    if err != nil {
+        log.Fatalf("정보 조회 실패: %v\n", err)
+    }
+
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
 
-    fmt.Println("크롤링된 식당 정보:")
-    for i, text := range texts {
-        fmt.Printf("%d. %s\n", i+1, text)
-    }
+    c.JSON(http.StatusOK, result)
+
+    fmt.Println(result)
 }
-	*/
