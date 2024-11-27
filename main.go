@@ -1,44 +1,39 @@
 package main
 
-import(
-	"github.com/gin-gonic/gin"
-	"server/login"
-	"server/db"
-	"server/naver"
-	"server/geolocation"
-	"server/crwl"
-	"fmt"
+import (
+    "github.com/JinHyeokOh01/FSSP-Server/db"
+    "github.com/JinHyeokOh01/FSSP-Server/routes"
+    "github.com/JinHyeokOh01/FSSP-Server/controllers"
+    "github.com/joho/godotenv"
+    "log"
+    "fmt"
 )
 
+func init() {
+    // 환경 변수 로드
+    if err := godotenv.Load(); err != nil {
+        log.Fatal("Error loading .env file")
+    }
+}
+
 func main() {
-	client, err := db.ConnectDB()
-	if err != nil{
-		panic(err)
-	}
-	defer db.DisconnectDB(client)
+    // MongoDB 연결
+    client, err := db.ConnectDB()
+    if err != nil {
+        panic(err)
+    }
+    defer db.DisconnectDB(client)
 
-	r := gin.Default()
- 
-	r.GET("/", login.GoogleForm)
-	r.GET("/auth/google/login", login.GoogleLoginHandler)
-	r.GET("/auth/google/callback", func(c *gin.Context) {
-        login.GoogleAuthCallback(c, client)
-		db.Mu.Lock() // 뮤텍스 잠금
-        if db.CurrentUser != nil {
-            fmt.Println("Current User Info:", db.CurrentUser) // 전역 변수 사용
-        }
-        db.Mu.Unlock() // 뮤텍스 잠금 해제
-    })
+    // Google OAuth 초기화
+    controllers.InitGoogleOAuth()
 
-	r.GET("/search", naver.QuerySearch)
-	r.POST("/savelist", func(c *gin.Context){
-		db.UpdateListHandler(c, client, db.CurrentUser["email"].(string))
-	})
-	r.POST("/deletelist", func(c *gin.Context){
-		db.DeleteListHandler(c, client, db.CurrentUser["email"].(string))
-	})
-	r.GET("/getLocation", geolocation.GeoLocationHandler)
-	r.GET("/getInformation", crwl.CrawlingHandler)
-
-	r.Run(":5000")
- }
+    // Gin 라우터 설정
+    r := routes.Routes(client)
+    
+    port := 5000
+    log.Printf("Server is running on port: %d", port)
+    
+    if err := r.Run(fmt.Sprintf(":%d", port)); err != nil {
+        log.Fatal("Server failed to start:", err)
+    }
+}

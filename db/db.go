@@ -4,12 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-
-	"github.com/joho/godotenv"
-	"github.com/gin-gonic/gin"
-
 	"os"
-	"log"
+
+	"github.com/gin-gonic/gin"
   
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -17,10 +14,6 @@ import (
   )
   
 func ConnectDB() (*mongo.Client, error) {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
 	userURI := os.Getenv("MONGO_URI")
 	// Use the SetServerAPIOptions() method to set the version of the Stable API on the client
 	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
@@ -54,32 +47,34 @@ type UserInfo struct {
 	List []string
 }
 
-func UserAddDB(client *mongo.Client, email string, name string){
-	coll := client.Database("FSSP_DB").Collection("users")
-	doc := UserInfo{Email: email, Name: name, List: []string{}}
-	result, err := coll.InsertOne(context.TODO(), doc)
-	if err != nil{
-		panic(err)
-	}
-	fmt.Printf("Inserted document with _id: %v\n", result.InsertedID)
+func UserAddDB(client *mongo.Client, email string, name string) error {
+    coll := client.Database("FSSP_DB").Collection("users")
+    doc := UserInfo{Email: email, Name: name, List: []string{}}
+    
+    result, err := coll.InsertOne(context.TODO(), doc)
+    if err != nil {
+        return fmt.Errorf("failed to insert user: %v", err)
+    }
+    
+    fmt.Printf("Inserted document with _id: %v\n", result.InsertedID)
+    return nil
 }
 
 type ListRequest struct {
-    NewItem string `json:"new_item" binding:"required"`
+    NewItem string `json:"NewItem"`
 }
 
 func UpdateListHandler(c *gin.Context, client *mongo.Client, email string) {
-    /*var request UpdateListRequest
+    var request ListRequest
 
     // 요청 바디에서 데이터 바인딩
     if err := c.ShouldBindJSON(&request); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
-		*/
 
     // 데이터베이스 업데이트
-    UpdateListDB(client, email, "그로또")
+    UpdateListDB(client, email, request.NewItem)
 
     c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
@@ -104,17 +99,16 @@ func UpdateListDB(client *mongo.Client, email string, newItem string){
 }
 
 func DeleteListHandler(c *gin.Context, client *mongo.Client, email string) {
-    /*var request UpdateListRequest
+    var request ListRequest
 
     // 요청 바디에서 데이터 바인딩
     if err := c.ShouldBindJSON(&request); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
-		*/
 
     // 데이터베이스 업데이트
-    DeleteListDB(client, email, "그로또")
+    DeleteListDB(client, email, request.NewItem)
 
     c.JSON(http.StatusOK, gin.H{"status": "success"})
 }

@@ -1,0 +1,12 @@
+services:
+  app:
+    image: fssp-server
+    build:
+      context: .
+      target: dev
+    environment:
+      PORT: 5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
