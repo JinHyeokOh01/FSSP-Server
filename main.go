@@ -5,12 +5,12 @@ import (
     "github.com/JinHyeokOh01/FSSP-Server/routes"
     "github.com/JinHyeokOh01/FSSP-Server/controllers"
     "github.com/joho/godotenv"
+    "github.com/gin-gonic/gin"
     "log"
     "fmt"
 )
 
 func init() {
-    // 환경 변수 로드
     if err := godotenv.Load(); err != nil {
         log.Fatal("Error loading .env file")
     }
@@ -24,11 +24,16 @@ func main() {
     }
     defer db.DisconnectDB(client)
 
-    // Google OAuth 초기화
-    controllers.InitGoogleOAuth()
+    // Gin 엔진 생성
+    r := gin.Default()
 
-    // Gin 라우터 설정
-    r := routes.Routes(client)
+    // Auth 초기화 (세션 및 OAuth 설정)
+    if err := controllers.InitAuth(r); err != nil {
+        log.Fatal("Failed to initialize auth:", err)
+    }
+
+    // 라우터 설정
+    routes.SetupRoutes(r, client)
     
     port := 5000
     log.Printf("Server is running on port: %d", port)
