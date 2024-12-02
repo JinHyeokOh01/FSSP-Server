@@ -1,97 +1,106 @@
 package db
 
 import (
-	"context"
-	"fmt"
-	"net/http"
-	"os"
+    "context"
+    "fmt"
+    "net/http"
+    "os"
 
-	"github.com/gin-gonic/gin"
-  
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/bson"
-  )
-  
-func ConnectDB() (*mongo.Client, error) {
-	userURI := os.Getenv("MONGO_URI")
-	// Use the SetServerAPIOptions() method to set the version of the Stable API on the client
-	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
-	opts := options.Client().ApplyURI(userURI).SetServerAPIOptions(serverAPI)
-  
-	  // Create a new client and connect to the server
-	client, err := mongo.Connect(context.TODO(), opts)
-	if err != nil {
-		panic(err)
-	}
+    "github.com/gin-gonic/gin"
+    "go.mongodb.org/mongo-driver/mongo"
+    "go.mongodb.org/mongo-driver/mongo/options"
+    "go.mongodb.org/mongo-driver/bson"
+)
 
-	// Send a ping to confirm a successful connection
-	if err := client.Database("admin").RunCommand(context.TODO(), bson.D{{"ping", 1}}).Err(); err != nil {
-	  panic(err)
-	}
-	fmt.Println("Pinged your deployment. You successfully connected to MongoDB!")
-	return client, nil
+// Restaurant 정보를 담는 구조체
+type Restaurant struct {
+    Name     string `bson:"name"`
+    Category string `bson:"category"`
+    Address  string `bson:"address"`
 }
 
-func DisconnectDB(client *mongo.Client){
-	err := client.Disconnect(context.TODO())
+// UserInfo 구조체 업데이트
+type UserInfo struct {
+    Email       string       `bson:"email"`
+    Name        string       `bson:"name"`
+    Restaurants []Restaurant `bson:"restaurants"` // List를 Restaurant 슬라이스로 변경
+}
+
+// ListRequest 구조체 업데이트
+type ListRequest struct {
+    Name     string `json:"name"`
+    Category string `json:"category"`
+    Address  string `json:"address"`
+}
+
+func ConnectDB() (*mongo.Client, error) {
+    userURI := os.Getenv("MONGO_URI")
+    serverAPI := options.ServerAPI(options.ServerAPIVersion1)
+    opts := options.Client().ApplyURI(userURI).SetServerAPIOptions(serverAPI)
+
+    client, err := mongo.Connect(context.TODO(), opts)
+    if err != nil {
+        panic(err)
+    }
+
+    if err := client.Database("admin").RunCommand(context.TODO(), bson.D{{"ping", 1}}).Err(); err != nil {
+        panic(err)
+    }
+    fmt.Println("Pinged your deployment. You successfully connected to MongoDB!")
+    return client, nil
+}
+
+func DisconnectDB(client *mongo.Client) {
+    err := client.Disconnect(context.TODO())
     if err != nil {
         panic(err)
     }
     fmt.Println("Successfully disconnected from MongoDB!")
 }
 
-type UserInfo struct {
-	Email string
-	Name  string
-	List []string
-}
-
 func UserAddDB(client *mongo.Client, email string, name string) error {
     coll := client.Database("FSSP_DB").Collection("users")
-    doc := UserInfo{Email: email, Name: name, List: []string{}}
-    
+    doc := UserInfo{
+        Email:       email,
+        Name:        name,
+        Restaurants: []Restaurant{}, // 빈 Restaurant 슬라이스로 초기화
+    }
+
     result, err := coll.InsertOne(context.TODO(), doc)
     if err != nil {
         return fmt.Errorf("failed to insert user: %v", err)
     }
-    
+
     fmt.Printf("Inserted document with _id: %v\n", result.InsertedID)
     return nil
-}
-
-type ListRequest struct {
-    NewItem string `json:"NewItem"`
 }
 
 func UpdateListHandler(c *gin.Context, client *mongo.Client, email string) {
     var request ListRequest
 
-    // 요청 바디에서 데이터 바인딩
     if err := c.ShouldBindJSON(&request); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
 
-    // 데이터베이스 업데이트
-    UpdateListDB(client, email, request.NewItem)
-
+    UpdateListDB(client, email, request.Name, request.Category, request.Address)
     c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
-//식당 저장할 때 추가하는 함수
-func UpdateListDB(client *mongo.Client, email string, newItem string){
-	coll := client.Database("FSSP_DB").Collection("users")
+func UpdateListDB(client *mongo.Client, email string, name string, category string, address string) {
+    coll := client.Database("FSSP_DB").Collection("users")
 
-	// 새로운 아이템을 추가할 문서 찾기
     filter := bson.M{"email": email}
-
-    // 업데이트할 내용 정의
     update := bson.M{
-        "$push": bson.M{"list": newItem}, // List에 newItem 추가
+        "$push": bson.M{
+            "restaurants": Restaurant{
+                Name:     name,
+                Category: category,
+                Address:  address,
+            },
+        },
     }
 
-    // 문서 업데이트
     _, err := coll.UpdateOne(context.TODO(), filter, update)
     if err != nil {
         panic(err)
@@ -101,33 +110,56 @@ func UpdateListDB(client *mongo.Client, email string, newItem string){
 func DeleteListHandler(c *gin.Context, client *mongo.Client, email string) {
     var request ListRequest
 
-    // 요청 바디에서 데이터 바인딩
     if err := c.ShouldBindJSON(&request); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
 
-    // 데이터베이스 업데이트
-    DeleteListDB(client, email, request.NewItem)
-
+    DeleteListDB(client, email, request.Name)
     c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
-//식당 삭제하는 함수
-func DeleteListDB(client *mongo.Client, email string, newItem string){
-	coll := client.Database("FSSP_DB").Collection("users")
+func DeleteListDB(client *mongo.Client, email string, name string) {
+    coll := client.Database("FSSP_DB").Collection("users")
 
-	// 아이템을 삭제할 문서 찾기
     filter := bson.M{"email": email}
-
-    // 업데이트할 내용 정의
     update := bson.M{
-        "$pull": bson.M{"list": newItem}, // List에서 newItem 삭제
+        "$pull": bson.M{
+            "restaurants": bson.M{"name": name}, // 식당 이름으로 삭제
+        },
     }
 
-    // 문서 업데이트
     _, err := coll.UpdateOne(context.TODO(), filter, update)
     if err != nil {
         panic(err)
     }
+}
+
+// GetRestaurantsHandler handles HTTP requests to get all restaurants for a user
+func GetRestaurantsHandler(c *gin.Context, client *mongo.Client, email string) {
+    restaurants, err := GetRestaurantsDB(client, email)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    c.JSON(http.StatusOK, gin.H{"restaurants": restaurants})
+}
+
+// GetRestaurantsDB retrieves all restaurants for a given user from the database
+func GetRestaurantsDB(client *mongo.Client, email string) ([]Restaurant, error) {
+    coll := client.Database("FSSP_DB").Collection("users")
+    
+    // Find the user document
+    var user UserInfo
+    filter := bson.M{"email": email}
+    err := coll.FindOne(context.TODO(), filter).Decode(&user)
+    
+    if err != nil {
+        if err == mongo.ErrNoDocuments {
+            return []Restaurant{}, fmt.Errorf("no user found with email: %s", email)
+        }
+        return nil, fmt.Errorf("database error: %v", err)
+    }
+    
+    return user.Restaurants, nil
 }
