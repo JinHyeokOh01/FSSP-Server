@@ -2,80 +2,64 @@
 package main
 
 import (
-    "context"
     "log"
-    "time"
+    "os"
+    "net/http"
     "github.com/gin-gonic/gin"
     "github.com/gin-contrib/sessions"
     "github.com/gin-contrib/sessions/cookie"
     "github.com/joho/godotenv"
-    "go.mongodb.org/mongo-driver/mongo"
-    "go.mongodb.org/mongo-driver/mongo/options"
-    "your-project/routes"
+    "github.com/JinHyeokOh01/FSSP-Server/routes"
+    "github.com/JinHyeokOh01/FSSP-Server/db"
 )
 
 func main() {
-    // 환경 변수 로드
     if err := godotenv.Load(); err != nil {
-        log.Fatal("Error loading .env file")
+        log.Fatal("Error loading .env file:", err)
     }
 
-    // MongoDB 연결
-    client, err := connectDB()
+    sessionSecret := os.Getenv("SESSION_SECRET")
+    if sessionSecret == "" {
+        log.Fatal("SESSION_SECRET is not set in .env file")
+    }
+
+    client, err := db.ConnectDB()
     if err != nil {
         log.Fatal("Failed to connect to database:", err)
     }
-    defer client.Disconnect(context.Background())
+    defer db.DisconnectDB(client)
 
-    // Gin 엔진 초기화
     r := gin.Default()
 
-    // 세션 미들웨어 설정
-    store := cookie.NewStore([]byte("your-secret-key")) // 실제 운영환경에서는 환경변수에서 가져오세요
+    store := cookie.NewStore([]byte(sessionSecret))
     store.Options(sessions.Options{
-        MaxAge:   60 * 60 * 24 * 7, // 7일
+        MaxAge:   60 * 60 * 24 * 7, // 7 days
         Path:     "/",
-        Secure:   false, // HTTPS 사용 시 true로 설정
+        Secure:   false,            // Set to true in production with HTTPS
         HttpOnly: true,
+        SameSite: http.SameSiteLaxMode,
     })
     r.Use(sessions.Sessions("session", store))
 
-    // CORS 설정
+    // CORS configuration
     r.Use(corsMiddleware())
 
-    // 라우트 설정
-    routes.SetupRoutes(r, client.Database("your_database_name"))
+    routes.SetupRoutes(r, client.Database("FSSP_DB"))
 
-    // 서버 시작
-    if err := r.Run(":8080"); err != nil {
+    port := ":8080"
+    log.Printf("Server is starting on port%s", port)
+    if err := r.Run(port); err != nil {
         log.Fatal("Failed to start server:", err)
     }
 }
 
-func connectDB() (*mongo.Client, error) {
-    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
-
-    clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
-    client, err := mongo.Connect(ctx, clientOptions)
-    if err != nil {
-        return nil, err
-    }
-
-    err = client.Ping(ctx, nil)
-    if err != nil {
-        return nil, err
-    }
-
-    return client, nil
-}
-
 func corsMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
-        c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+        c.Writer.Header().Set("Access-Control-Allow-Origin", "http://localhost:8080")
         c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-        c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+        c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, Cookie")
         c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+        c.Writer.Header().Set("Access-Control-Expose-Headers", "Set-Cookie")
 
         if c.Request.Method == "OPTIONS" {
             c.AbortWithStatus(204)

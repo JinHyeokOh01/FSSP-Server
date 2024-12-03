@@ -21,6 +21,17 @@ func NewAuthController(db *mongo.Database) *AuthController {
     return &AuthController{db: db}
 }
 
+func (ac *AuthController) isEmailExists(email string) (bool, error) {
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    count, err := ac.db.Collection("users").CountDocuments(ctx, bson.M{"email": email})
+    if err != nil {
+        return false, err
+    }
+    return count > 0, nil
+}
+
 func (ac *AuthController) Register(c *gin.Context) {
     var input struct {
         Email    string `json:"email" binding:"required,email"`
@@ -51,14 +62,20 @@ func (ac *AuthController) Register(c *gin.Context) {
         return
     }
 
+    now := time.Now()
     user := bson.M{
-        "email":     input.Email,
-        "password":  string(hashedPassword),
-        "name":      input.Name,
-        "createdAt": time.Now(),
+        "email":       input.Email,
+        "password":    string(hashedPassword),
+        "name":        input.Name,
+        "createdAt":   now,
+        "updatedAt":   now,
+        "restaurants": []interface{}{},
     }
 
-    _, err = ac.db.Collection("users").InsertOne(context.TODO(), user)
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    _, err = ac.db.Collection("users").InsertOne(ctx, user)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": "사용자 생성에 실패했습니다"})
         return
@@ -78,8 +95,11 @@ func (ac *AuthController) Login(c *gin.Context) {
         return
     }
 
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
     var user bson.M
-    err := ac.db.Collection("users").FindOne(context.TODO(), bson.M{"email": input.Email}).Decode(&user)
+    err := ac.db.Collection("users").FindOne(ctx, bson.M{"email": input.Email}).Decode(&user)
     if err == mongo.ErrNoDocuments {
         c.JSON(http.StatusUnauthorized, gin.H{"error": "이메일 또는 비밀번호가 올바르지 않습니다"})
         return
@@ -130,17 +150,26 @@ func (ac *AuthController) Logout(c *gin.Context) {
 
 func (ac *AuthController) GetCurrentUser(c *gin.Context) {
     session := sessions.Default(c)
-    userId := session.Get("userId")
-    if userId == nil {
-        c.JSON(http.StatusUnauthorized, gin.H{"error": "로그인이 필요합니다"})
+    userEmail := session.Get("email")
+    if userEmail == nil {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "인증이 필요합니다"})
         return
     }
 
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
     var user bson.M
-    objectId, _ := primitive.ObjectIDFromHex(userId.(string))
-    err := ac.db.Collection("users").FindOne(context.TODO(), bson.M{"_id": objectId}).Decode(&user)
+    err := ac.db.Collection("users").FindOne(ctx, bson.M{
+        "email": userEmail.(string),
+    }).Decode(&user)
+
     if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "사용자 정보를 가져오는데 실패했습니다"})
+        if err == mongo.ErrNoDocuments {
+            c.JSON(http.StatusNotFound, gin.H{"error": "사용자를 찾을 수 없습니다"})
+            return
+        }
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "서버 오류가 발생했습니다"})
         return
     }
 
@@ -149,12 +178,4 @@ func (ac *AuthController) GetCurrentUser(c *gin.Context) {
         "email": user["email"],
         "name":  user["name"],
     })
-}
-
-func (ac *AuthController) isEmailExists(email string) (bool, error) {
-    count, err := ac.db.Collection("users").CountDocuments(context.TODO(), bson.M{"email": email})
-    if err != nil {
-        return false, err
-    }
-    return count > 0, nil
 }

@@ -5,7 +5,7 @@ import (
     "github.com/gin-gonic/gin"
     "github.com/gin-contrib/sessions"
     "go.mongodb.org/mongo-driver/mongo"
-    "your-project/controllers"
+    "github.com/JinHyeokOh01/FSSP-Server/controllers"
 )
 
 func SetupRoutes(r *gin.Engine, db *mongo.Database) {
@@ -19,11 +19,13 @@ func SetupRoutes(r *gin.Engine, db *mongo.Database) {
         auth.GET("/current-user", AuthRequired(), authController.GetCurrentUser)
     }
 
-    // 보호된 API 라우트
+    // ChatGPT API 라우트 추가
+    r.POST("/chat", controllers.HandleChat)
+
     api := r.Group("/api")
     api.Use(AuthRequired())
     {
-        // 여기에 인증이 필요한 API 엔드포인트 추가
+        // 인증이 필요한 API 엔드포인트
     }
 }
 
