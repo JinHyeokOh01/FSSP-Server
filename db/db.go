@@ -5,160 +5,209 @@ import (
     "fmt"
     "net/http"
     "os"
+    "time"
 
     "github.com/gin-gonic/gin"
     "go.mongodb.org/mongo-driver/mongo"
     "go.mongodb.org/mongo-driver/mongo/options"
     "go.mongodb.org/mongo-driver/bson"
+    "go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// Restaurant 정보를 담는 구조체
 type Restaurant struct {
-    Name     string `bson:"name"`
-    Category string `bson:"category"`
-    Address  string `bson:"address"`
+    ID        primitive.ObjectID `bson:"_id,omitempty"`
+    Name      string            `bson:"name"`
+    Category  string            `bson:"category"`
+    Address   string            `bson:"address"`
+    CreatedAt time.Time         `bson:"created_at"`
 }
 
-// UserInfo 구조체 업데이트
 type UserInfo struct {
-    Email       string       `bson:"email"`
-    Name        string       `bson:"name"`
-    Restaurants []Restaurant `bson:"restaurants"` // List를 Restaurant 슬라이스로 변경
+    ID          primitive.ObjectID `bson:"_id,omitempty"`
+    Email       string            `bson:"email"`
+    Password    string            `bson:"password"`
+    Name        string            `bson:"name"`
+    CreatedAt   time.Time         `bson:"created_at"`
+    UpdatedAt   time.Time         `bson:"updated_at"`
+    Restaurants []Restaurant      `bson:"restaurants"`
 }
 
-// ListRequest 구조체 업데이트
 type ListRequest struct {
-    Name     string `json:"name"`
-    Category string `json:"category"`
-    Address  string `json:"address"`
+    Name     string `json:"name" binding:"required"`
+    Category string `json:"category" binding:"required"`
+    Address  string `json:"address" binding:"required"`
 }
 
 func ConnectDB() (*mongo.Client, error) {
     userURI := os.Getenv("MONGO_URI")
+    if userURI == "" {
+        return nil, fmt.Errorf("MONGO_URI environment variable is not set")
+    }
+
     serverAPI := options.ServerAPI(options.ServerAPIVersion1)
     opts := options.Client().ApplyURI(userURI).SetServerAPIOptions(serverAPI)
 
-    client, err := mongo.Connect(context.TODO(), opts)
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    client, err := mongo.Connect(ctx, opts)
     if err != nil {
-        panic(err)
+        return nil, fmt.Errorf("failed to connect to MongoDB: %v", err)
     }
 
-    if err := client.Database("admin").RunCommand(context.TODO(), bson.D{{"ping", 1}}).Err(); err != nil {
-        panic(err)
+    if err := client.Database("admin").RunCommand(ctx, bson.D{{"ping", 1}}).Err(); err != nil {
+        return nil, fmt.Errorf("failed to ping MongoDB: %v", err)
     }
-    fmt.Println("Pinged your deployment. You successfully connected to MongoDB!")
+
+    fmt.Println("Successfully connected to MongoDB")
     return client, nil
 }
 
-func DisconnectDB(client *mongo.Client) {
-    err := client.Disconnect(context.TODO())
-    if err != nil {
-        panic(err)
+func DisconnectDB(client *mongo.Client) error {
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    if err := client.Disconnect(ctx); err != nil {
+        return fmt.Errorf("failed to disconnect from MongoDB: %v", err)
     }
-    fmt.Println("Successfully disconnected from MongoDB!")
+
+    fmt.Println("Successfully disconnected from MongoDB")
+    return nil
 }
 
-func UserAddDB(client *mongo.Client, email string, name string) error {
-    coll := client.Database("FSSP_DB").Collection("users")
-    doc := UserInfo{
-        Email:       email,
-        Name:        name,
-        Restaurants: []Restaurant{}, // 빈 Restaurant 슬라이스로 초기화
+func UserAddDB(client *mongo.Client, email, hashedPassword, name string) error {
+    coll := client.Database("FSSP_DB").Collection("userlist")
+
+    // Check for existing user
+    count, err := coll.CountDocuments(context.TODO(), bson.M{"email": email})
+    if err != nil {
+        return fmt.Errorf("failed to check existing user: %v", err)
+    }
+    if count > 0 {
+        return fmt.Errorf("user with email %s already exists", email)
     }
 
-    result, err := coll.InsertOne(context.TODO(), doc)
+    now := time.Now()
+    doc := UserInfo{
+        Email:       email,
+        Password:    hashedPassword,
+        Name:        name,
+        CreatedAt:   now,
+        UpdatedAt:   now,
+        Restaurants: []Restaurant{},
+    }
+
+    _, err = coll.InsertOne(context.TODO(), doc)
     if err != nil {
         return fmt.Errorf("failed to insert user: %v", err)
     }
 
-    fmt.Printf("Inserted document with _id: %v\n", result.InsertedID)
     return nil
 }
 
 func UpdateListHandler(c *gin.Context, client *mongo.Client, email string) {
     var request ListRequest
-
     if err := c.ShouldBindJSON(&request); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request data"})
         return
     }
 
-    UpdateListDB(client, email, request.Name, request.Category, request.Address)
-    c.JSON(http.StatusOK, gin.H{"status": "success"})
+    if err := UpdateListDB(client, email, request.Name, request.Category, request.Address); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"message": "Restaurant added successfully"})
 }
 
-func UpdateListDB(client *mongo.Client, email string, name string, category string, address string) {
+func UpdateListDB(client *mongo.Client, email, name, category, address string) error {
     coll := client.Database("FSSP_DB").Collection("users")
+
+    restaurant := Restaurant{
+        ID:        primitive.NewObjectID(),
+        Name:      name,
+        Category:  category,
+        Address:   address,
+        CreatedAt: time.Now(),
+    }
 
     filter := bson.M{"email": email}
     update := bson.M{
-        "$push": bson.M{
-            "restaurants": Restaurant{
-                Name:     name,
-                Category: category,
-                Address:  address,
-            },
-        },
+        "$push": bson.M{"restaurants": restaurant},
+        "$set":  bson.M{"updated_at": time.Now()},
     }
 
-    _, err := coll.UpdateOne(context.TODO(), filter, update)
+    result, err := coll.UpdateOne(context.TODO(), filter, update)
     if err != nil {
-        panic(err)
+        return fmt.Errorf("failed to update user restaurants: %v", err)
     }
+
+    if result.MatchedCount == 0 {
+        return fmt.Errorf("no user found with email: %s", email)
+    }
+
+    return nil
 }
 
 func DeleteListHandler(c *gin.Context, client *mongo.Client, email string) {
     var request ListRequest
-
     if err := c.ShouldBindJSON(&request); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request data"})
         return
     }
 
-    DeleteListDB(client, email, request.Name)
-    c.JSON(http.StatusOK, gin.H{"status": "success"})
+    if err := DeleteListDB(client, email, request.Name); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"message": "Restaurant deleted successfully"})
 }
 
-func DeleteListDB(client *mongo.Client, email string, name string) {
+func DeleteListDB(client *mongo.Client, email, name string) error {
     coll := client.Database("FSSP_DB").Collection("users")
 
     filter := bson.M{"email": email}
     update := bson.M{
-        "$pull": bson.M{
-            "restaurants": bson.M{"name": name}, // 식당 이름으로 삭제
-        },
+        "$pull": bson.M{"restaurants": bson.M{"name": name}},
+        "$set":  bson.M{"updated_at": time.Now()},
     }
 
-    _, err := coll.UpdateOne(context.TODO(), filter, update)
+    result, err := coll.UpdateOne(context.TODO(), filter, update)
     if err != nil {
-        panic(err)
+        return fmt.Errorf("failed to delete restaurant: %v", err)
     }
+
+    if result.MatchedCount == 0 {
+        return fmt.Errorf("no user found with email: %s", email)
+    }
+
+    return nil
 }
 
-// GetRestaurantsHandler handles HTTP requests to get all restaurants for a user
 func GetRestaurantsHandler(c *gin.Context, client *mongo.Client, email string) {
     restaurants, err := GetRestaurantsDB(client, email)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
-    c.JSON(http.StatusOK, gin.H{"restaurants": restaurants})
+
+    c.JSON(http.StatusOK, gin.H{
+        "message":     "Restaurants retrieved successfully",
+        "restaurants": restaurants,
+    })
 }
 
-// GetRestaurantsDB retrieves all restaurants for a given user from the database
 func GetRestaurantsDB(client *mongo.Client, email string) ([]Restaurant, error) {
     coll := client.Database("FSSP_DB").Collection("users")
     
-    // Find the user document
     var user UserInfo
-    filter := bson.M{"email": email}
-    err := coll.FindOne(context.TODO(), filter).Decode(&user)
-    
+    err := coll.FindOne(context.TODO(), bson.M{"email": email}).Decode(&user)
     if err != nil {
         if err == mongo.ErrNoDocuments {
-            return []Restaurant{}, fmt.Errorf("no user found with email: %s", email)
+            return nil, fmt.Errorf("no user found with email: %s", email)
         }
-        return nil, fmt.Errorf("database error: %v", err)
+        return nil, fmt.Errorf("failed to retrieve user data: %v", err)
     }
     
     return user.Restaurants, nil
