@@ -44,7 +44,7 @@ func main() {
     // CORS configuration
     r.Use(corsMiddleware())
 
-    routes.SetupRoutes(r, client.Database("FSSP_DB"))
+    routes.SetupRoutes(r, client)
 
     port := ":8080"
     log.Printf("Server is starting on port%s", port)

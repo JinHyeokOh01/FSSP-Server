@@ -6,10 +6,11 @@ import (
     "github.com/gin-contrib/sessions"
     "go.mongodb.org/mongo-driver/mongo"
     "github.com/JinHyeokOh01/FSSP-Server/controllers"
+    "github.com/JinHyeokOh01/FSSP-Server/db"
 )
 
-func SetupRoutes(r *gin.Engine, db *mongo.Database) {
-    authController := controllers.NewAuthController(db)
+func SetupRoutes(r *gin.Engine, client *mongo.Client) {
+    authController := controllers.NewAuthController(client.Database(db.DatabaseName))
 
     auth := r.Group("/auth")
     {
@@ -19,13 +20,37 @@ func SetupRoutes(r *gin.Engine, db *mongo.Database) {
         auth.GET("/current-user", AuthRequired(), authController.GetCurrentUser)
     }
 
-    // ChatGPT API 라우트 추가
-    r.POST("/chat", controllers.HandleChat)
-
+    // API 라우트 그룹 생성
     api := r.Group("/api")
-    api.Use(AuthRequired())
     {
-        // 인증이 필요한 API 엔드포인트
+        // 인증 없이 접근 가능한 엔드포인트들
+        api.GET("/search", controllers.NaverSearchHandler)
+        api.POST("/chat", controllers.HandleChat)
+
+        // 레스토랑 관리 라우트
+        restaurants := api.Group("/restaurants")
+        {
+            // 현재 로그인한 사용자의 레스토랑 목록 조회
+            restaurants.GET("", func(c *gin.Context) {
+                session := sessions.Default(c)
+                email := session.Get("userEmail").(string)
+                db.GetRestaurantsHandler(c, client, email)
+            })
+
+            // 새로운 레스토랑 추가
+            restaurants.POST("", func(c *gin.Context) {
+                session := sessions.Default(c)
+                email := session.Get("userEmail").(string)
+                db.UpdateListHandler(c, client, email)
+            })
+
+            // 레스토랑 삭제
+            restaurants.DELETE("", func(c *gin.Context) {
+                session := sessions.Default(c)
+                email := session.Get("userEmail").(string)
+                db.DeleteListHandler(c, client, email)
+            })
+        }
     }
 }
 
