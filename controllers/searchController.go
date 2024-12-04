@@ -88,28 +88,25 @@ func NaverSearchHandler(c *gin.Context) {
 
     // 2. 사용자의 즐겨찾기 목록 가져오기
     session := sessions.Default(c)
-    email := session.Get("userEmail")
+    email := session.Get("email")
     var userFavorites []db.Restaurant
     if email != nil {
         userFavorites, _ = db.GetRestaurantsDB(c.MustGet("mongoClient").(*mongo.Client), email.(string))
     }
 
-    // 3. 응답 포맷 변환
+    // map은 반복문 밖에서 한 번만 생성
+    favoriteMap := make(map[string]bool)
+    for _, fav := range userFavorites {
+        favoriteMap[fav.Name] = true
+    }
     restaurants := make([]RestaurantResponse, 0)
+    // 반복문에서는 생성된 map을 사용만 함
     for _, item := range result.Items {
-        // HTML 태그 제거 및 특수문자 처리
         name := strings.ReplaceAll(item.Title, "<b>", "")
         name = strings.ReplaceAll(name, "</b>", "")
-
-        // 즐겨찾기 여부 확인
-        isFavorite := false
-        for _, fav := range userFavorites {
-            if fav.Name == name {
-                isFavorite = true
-                break
-            }
-        }
-
+        
+        isFavorite := favoriteMap[name]
+        
         restaurants = append(restaurants, RestaurantResponse{
             Name:       name,
             Address:    item.RoadAddress,
