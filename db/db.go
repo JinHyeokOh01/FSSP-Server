@@ -44,6 +44,11 @@ type ListRequest struct {
     Address  string `json:"address" binding:"required"`
 }
 
+// db/db.go에 추가
+type DeleteListRequest struct {
+    Name string `json:"name" binding:"required"`
+}
+
 func ConnectDB() (*mongo.Client, error) {
     mongoURI := os.Getenv("MONGO_URI")
     if mongoURI == "" {
@@ -163,8 +168,9 @@ func UpdateListDB(client *mongo.Client, email, name, category, address string) e
     return nil
 }
 
+// DeleteListHandler 수정
 func DeleteListHandler(c *gin.Context, client *mongo.Client, email string) {
-    var request ListRequest
+    var request DeleteListRequest
     if err := c.ShouldBindJSON(&request); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request data"})
         return

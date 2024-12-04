@@ -9,6 +9,7 @@ import (
     "github.com/JinHyeokOh01/FSSP-Server/db"
 )
 
+// routes/routes.go
 func SetupRoutes(r *gin.Engine, client *mongo.Client) {
     authController := controllers.NewAuthController(client.Database(db.DatabaseName))
 
@@ -20,35 +21,45 @@ func SetupRoutes(r *gin.Engine, client *mongo.Client) {
         auth.GET("/current-user", AuthRequired(), authController.GetCurrentUser)
     }
 
-    // API 라우트 그룹 생성
     api := r.Group("/api")
     {
-        // 인증 없이 접근 가능한 엔드포인트들
         api.GET("/search", controllers.NaverSearchHandler)
         api.POST("/chat", controllers.HandleChat)
 
-        // 레스토랑 관리 라우트
-        restaurants := api.Group("/restaurants")
+        // 레스토랑 관리 라우트 - AuthRequired 미들웨어 추가
+        restaurants := api.Group("/restaurants").Use(AuthRequired())
         {
-            // 현재 로그인한 사용자의 레스토랑 목록 조회
             restaurants.GET("", func(c *gin.Context) {
                 session := sessions.Default(c)
-                email := session.Get("userEmail").(string)
-                db.GetRestaurantsHandler(c, client, email)
+                email := session.Get("email")
+                if email == nil {
+                    c.JSON(401, gin.H{"error": "인증이 필요합니다"})
+                    c.Abort()
+                    return
+                }
+                db.GetRestaurantsHandler(c, client, email.(string))
             })
 
-            // 새로운 레스토랑 추가
             restaurants.POST("", func(c *gin.Context) {
                 session := sessions.Default(c)
-                email := session.Get("userEmail").(string)
-                db.UpdateListHandler(c, client, email)
+                email := session.Get("email")
+                if email == nil {
+                    c.JSON(401, gin.H{"error": "인증이 필요합니다"})
+                    c.Abort()
+                    return
+                }
+                db.UpdateListHandler(c, client, email.(string))
             })
 
-            // 레스토랑 삭제
             restaurants.DELETE("", func(c *gin.Context) {
                 session := sessions.Default(c)
-                email := session.Get("userEmail").(string)
-                db.DeleteListHandler(c, client, email)
+                email := session.Get("email")
+                if email == nil {
+                    c.JSON(401, gin.H{"error": "인증이 필요합니다"})
+                    c.Abort()
+                    return
+                }
+                db.DeleteListHandler(c, client, email.(string))
             })
         }
     }
