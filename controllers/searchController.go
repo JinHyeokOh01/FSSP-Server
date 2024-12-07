@@ -9,6 +9,7 @@ import (
     "net/url"
     "os"
     "strings"
+    "time"
     
     "github.com/gin-gonic/gin"
     "github.com/gin-contrib/sessions"
@@ -75,43 +76,78 @@ func NaverSearch(query string, display int) (*NaverSearchResponse, error) {
     return &searchResponse, nil
 }
 
+// controllers/searchController.go
 func NaverSearchHandler(c *gin.Context) {
     query := c.Query("query")
     display := 5
 
-    // 1. Naver API 검색 결과 가져오기
-    result, err := NaverSearch(query, display)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
+    // 동시에 실행할 고루틴을 위한 에러 채널과 결과 채널 생성
+    errChan := make(chan error, 2)
+    searchChan := make(chan *NaverSearchResponse, 1)
+    favoritesChan := make(chan []db.Restaurant, 1)
 
-    // 2. 사용자의 즐겨찾기 목록 가져오기
+    // Naver API 검색을 고루틴으로 실행
+    go func() {
+        result, err := NaverSearch(query, display)
+        if err != nil {
+            errChan <- err
+            return
+        }
+        searchChan <- result
+    }()
+
+    // 사용자의 즐겨찾기 목록을 동시에 가져오기
     session := sessions.Default(c)
     email := session.Get("email")
+    go func() {
+        if email != nil {
+            favorites, err := db.GetRestaurantsDB(c.MustGet("mongoClient").(*mongo.Client), email.(string))
+            if err != nil {
+                errChan <- err
+                return
+            }
+            favoritesChan <- favorites
+        } else {
+            favoritesChan <- []db.Restaurant{}
+        }
+    }()
+
+    // 두 고루틴의 결과 대기
+    var searchResult *NaverSearchResponse
     var userFavorites []db.Restaurant
-    if email != nil {
-        userFavorites, _ = db.GetRestaurantsDB(c.MustGet("mongoClient").(*mongo.Client), email.(string))
+
+    // 타임아웃 설정
+    timeout := time.After(5 * time.Second)
+
+    for i := 0; i < 2; i++ {
+        select {
+        case err := <-errChan:
+            c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        case searchResult = <-searchChan:
+        case userFavorites = <-favoritesChan:
+        case <-timeout:
+            c.JSON(http.StatusRequestTimeout, gin.H{"error": "요청 시간이 초과되었습니다"})
+            return
+        }
     }
 
-    // map은 반복문 밖에서 한 번만 생성
+    // 결과 처리
     favoriteMap := make(map[string]bool)
     for _, fav := range userFavorites {
         favoriteMap[fav.Name] = true
     }
+
     restaurants := make([]RestaurantResponse, 0)
-    // 반복문에서는 생성된 map을 사용만 함
-    for _, item := range result.Items {
+    for _, item := range searchResult.Items {
         name := strings.ReplaceAll(item.Title, "<b>", "")
         name = strings.ReplaceAll(name, "</b>", "")
-        
-        isFavorite := favoriteMap[name]
         
         restaurants = append(restaurants, RestaurantResponse{
             Name:       name,
             Address:    item.RoadAddress,
             Category:   item.Category,
-            IsFavorite: isFavorite,
+            IsFavorite: favoriteMap[name],
         })
     }
 

@@ -5,6 +5,7 @@ import (
     "context"
     "net/http"
     "time"
+    "fmt"
     "github.com/gin-gonic/gin"
     "github.com/gin-contrib/sessions"
     "golang.org/x/crypto/bcrypt"
@@ -32,6 +33,7 @@ func (ac *AuthController) isEmailExists(email string) (bool, error) {
     return count > 0, nil
 }
 
+// controllers/authController.go
 func (ac *AuthController) Register(c *gin.Context) {
     var input struct {
         Email    string `json:"email" binding:"required,email"`
@@ -44,23 +46,58 @@ func (ac *AuthController) Register(c *gin.Context) {
         return
     }
 
-    // 이메일 중복 체크
-    exists, err := ac.isEmailExists(input.Email)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "서버 오류가 발생했습니다"})
-        return
-    }
-    if exists {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "이미 등록된 이메일입니다"})
+    // 이메일 체크와 비밀번호 해싱을 동시에 처리
+    emailCheckChan := make(chan error, 1)
+    hashedPassChan := make(chan []byte, 1)
+    hashErrChan := make(chan error, 1)
+
+    go func() {
+        exists, err := ac.isEmailExists(input.Email)
+        if err != nil {
+            emailCheckChan <- err
+            return
+        }
+        if exists {
+            emailCheckChan <- fmt.Errorf("이미 등록된 이메일입니다")
+            return
+        }
+        emailCheckChan <- nil
+    }()
+
+    go func() {
+        hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+        if err != nil {
+            hashErrChan <- err
+            return
+        }
+        hashedPassChan <- hashedPassword
+        hashErrChan <- nil
+    }()
+
+    // 결과 대기
+    select {
+    case err := <-emailCheckChan:
+        if err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+            return
+        }
+    case <-time.After(5 * time.Second):
+        c.JSON(http.StatusRequestTimeout, gin.H{"error": "이메일 확인 시간이 초과되었습니다"})
         return
     }
 
-    // 비밀번호 해싱
-    hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "비밀번호 처리 중 오류가 발생했습니다"})
+    select {
+    case err := <-hashErrChan:
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "비밀번호 처리 중 오류가 발생했습니다"})
+            return
+        }
+    case <-time.After(5 * time.Second):
+        c.JSON(http.StatusRequestTimeout, gin.H{"error": "비밀번호 처리 시간이 초과되었습니다"})
         return
     }
+
+    hashedPassword := <-hashedPassChan
 
     now := time.Now()
     user := bson.M{
@@ -75,7 +112,7 @@ func (ac *AuthController) Register(c *gin.Context) {
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
-    _, err = ac.db.Collection("users").InsertOne(ctx, user)
+    _, err := ac.db.Collection("users").InsertOne(ctx, user)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": "사용자 생성에 실패했습니다"})
         return
