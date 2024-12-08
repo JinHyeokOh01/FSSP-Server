@@ -65,7 +65,7 @@ func ChatGenerate(userInput string) (string, error) {
     currentTime := time.Now().Format("2006-01-02 15:04:05")
     Today := time.Now().Format("2006년 01월 02일 Monday")
     client := openai.NewClient(apiKey)
-    baseStr := "현재 날짜와 시간이" + Today + currentTime + "에 9시간을 더한 것인데 날짜로 한국 계절을 반영하고 현재 시간을 반영해서 메뉴 추천을 해줄 수 있을까? 답변에 시간은 포함하지 말고."
+    baseStr := "현재 날짜와 시간이" + Today + currentTime + "에 9시간을 더한 것인데 날짜로 한국 계절을 반영하고 현재 시간을 반영해서 메뉴 추천을 한 3개 정도 해줄 수 있을까? 식당에 가서 먹을거야. 답변 좀 간결하고 다정하게 해줘. 지금 날짜랑 시간에 대한 언급은 하지마."
 
     // 컨텍스트 타임아웃 설정
     ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
@@ -75,7 +75,7 @@ func ChatGenerate(userInput string) (string, error) {
         resp, err := client.CreateChatCompletion(
             ctx,
             openai.ChatCompletionRequest{
-                Model: openai.GPT3Dot5Turbo,
+                Model: openai.GPT4,
                 Messages: []openai.ChatCompletionMessage{
                     {
                         Role:    openai.ChatMessageRoleUser,
